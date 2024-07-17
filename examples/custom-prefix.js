@@ -1,19 +1,18 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
-const http = require("node:http");
-const wisp = require("wisp-server-node");
+const wsn = require("wisp-server-node")
+const HyperExpress = require('hyper-express');
+const Server = new HyperExpress.Server();
+const Router = new HyperExpress.Router();
 
-const httpServer = http.createServer();
-
-httpServer.on("upgrade", (req, socket, head) => {
-    // please include thr trailing slash
-    if (req.url.endsWith("/wisp/")) wisp.routeRequest(req, socket, head);
-    else socket.end();
+Router.ws('/wisp/', {
+    idle_timeout: 60,
+    max_payload_length: 32 * 1024,
+    message_type: "Buffer"
+}, (ws) => {
+    console.log(ws.ip + ' is now connected using websockets!');
+    console.log(ws instanceof HyperExpress.Websocket)
+    wsn.routeRequest(ws);
 });
 
-httpServer.on("listening", () => {
-    console.log("HTTP server listening");
-});
-
-httpServer.listen({
-    port: 8080,
-});
+// Websocket connections can now connect to '/wisp/'
+Server.use('/', Router);
+Server.listen(8080);

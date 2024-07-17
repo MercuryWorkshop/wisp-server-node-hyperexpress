@@ -1,5 +1,5 @@
 import { STREAM_TYPE, CONNECT_TYPE, WispFrame, WispOptions } from "./Types";
-import WebSocket, { WebSocketServer } from "ws";
+import WebSocket, { Websocket } from "hyper-express";
 import net, { Socket } from "node:net";
 import dgram from "node:dgram";
 import { IncomingMessage } from "node:http";
@@ -7,34 +7,17 @@ import FrameParsers, { continuePacketMaker, dataPacketMaker } from "./Packets";
 import { handleWsProxy } from "./wsproxy";
 import dns from "node:dns/promises";
 
-const wss = new WebSocket.Server({ noServer: true });
 const defaultOptions: WispOptions = { logging: true };
 // Accepts either routeRequest(ws) or routeRequest(request, socket, head) like bare
 export async function routeRequest(
-    wsOrIncomingMessage: WebSocket | IncomingMessage,
-    socket?: Socket,
-    head?: Buffer,
+    ws: Websocket,
+    _?: unknown,
+    __?: unknown,
     options: WispOptions = defaultOptions,
 ) {
     options = Object.assign({}, defaultOptions, options);
 
-    if (!(wsOrIncomingMessage instanceof WebSocket) && socket && head) {
-        // Wsproxy is handled here because if we're just passed the websocket then we don't even know it's URL
-        // Compatibility with bare like "handle upgrade" syntax
-        wss.handleUpgrade(wsOrIncomingMessage, socket as Socket, head, (ws: WebSocket): void => {
-            if (!wsOrIncomingMessage.url?.endsWith("/")) {
-                // if a URL ends with / then its not a wsproxy connection, its wisp
-                handleWsProxy(ws, wsOrIncomingMessage.url!);
-                return;
-            }
-            routeRequest(ws, undefined, undefined, options);
-        });
-        return;
-    }
-
-    if (!(wsOrIncomingMessage instanceof WebSocket)) return; // something went wrong, abort
-
-    const ws = wsOrIncomingMessage as WebSocket; // now that we are SURE we have a Websocket object, continue...
+    if (!(ws instanceof Websocket)) return; // something went wrong, abort
 
     const connections = new Map();
 
@@ -67,7 +50,7 @@ export async function routeRequest(
 
                     // Send Socket's data back to client
                     client.on("data", function (data) {
-                        ws.send(FrameParsers.dataPacketMaker(wispFrame, data));
+                        ws.send(FrameParsers.dataPacketMaker(wispFrame, data), true);
                     });
 
                     // Close stream if there is some network error
@@ -75,11 +58,11 @@ export async function routeRequest(
                         if (options.logging) {
                             console.error("Something went wrong");
                         }
-                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x03)); // 0x03 in the WISP protocol is defined as network error
+                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x03), true); // 0x03 in the WISP protocol is defined as network error
                         connections.delete(wispFrame.streamID);
                     });
                     client.on("close", function () {
-                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x02));
+                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x02), true);
                         connections.delete(wispFrame.streamID);
                     });
                 } else if (connectFrame.streamType === STREAM_TYPE.UDP) {
@@ -121,7 +104,7 @@ export async function routeRequest(
                     });
                     // Handle incoming UDP data
                     client.on("message", (data, rinfo) => {
-                        ws.send(FrameParsers.dataPacketMaker(wispFrame, data));
+                        ws.send(FrameParsers.dataPacketMaker(wispFrame, data), true);
                     });
 
                     // Handle errors
@@ -129,13 +112,13 @@ export async function routeRequest(
                         if (options.logging) {
                             console.error("UDP error:", err);
                         }
-                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x03));
+                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x03), true);
                         connections.delete(wispFrame.streamID);
                         client.close();
                     });
 
                     client.on("close", function () {
-                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x02));
+                        ws.send(FrameParsers.closePacketMaker(wispFrame, 0x02), true);
                         connections.delete(wispFrame.streamID);
                     });
 
@@ -154,7 +137,7 @@ export async function routeRequest(
                     stream.buffer--;
                     if (stream.buffer === 0) {
                         stream.buffer = 127;
-                        ws.send(continuePacketMaker(wispFrame, stream.buffer));
+                        ws.send(continuePacketMaker(wispFrame, stream.buffer), true);
                     }
                 } else if (stream && stream.client instanceof dgram.Socket) {
                     stream.client.send(wispFrame.payload, undefined, undefined, (err: Error | null) => {
@@ -162,7 +145,7 @@ export async function routeRequest(
                             if (options.logging) {
                                 console.error("UDP send error:", err);
                             }
-                            ws.send(FrameParsers.closePacketMaker(wispFrame, 0x03));
+                            ws.send(FrameParsers.closePacketMaker(wispFrame, 0x03), true);
                             if (stream.client.connected) {
                                 stream.client.close();
                             }
@@ -222,7 +205,7 @@ export async function routeRequest(
     });
 
     // SEND the initial continue packet with streamID 0 and 127 queue limit
-    ws.send(FrameParsers.continuePacketMaker({ streamID: 0 } as WispFrame, 127));
+    ws.send(FrameParsers.continuePacketMaker({ streamID: 0 } as WispFrame, 127), true);
 }
 
 export default {

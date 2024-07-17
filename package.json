@@ -25,11 +25,14 @@
     "homepage": "https://github.com/MercuryWorkshop/wisp-server-node#readme",
     "license": "AGPL-3.0-only",
     "devDependencies": {
+        "@types/busboy": "^1.5.4",
         "@types/ws": "^8.5.10",
         "typescript": "^5.3.3"
     },
     "dependencies": {
+        "@types/range-parser": "^1.2.7",
         "bufferutil": "^4.0.8",
+        "hyper-express": "^6.16.4",
         "utf-8-validate": "^6.0.3",
         "ws": "^8.16.0"
     }
